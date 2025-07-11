@@ -1,0 +1,1164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flask Dashboard - Categorize Devices</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for the Inter font */
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            display: flex; /* Use flexbox for body to ensure proper layout */
+            flex-direction: column; /* Stack children vertically */
+        }
+        /* Custom active state for sidebar links (Cloudflare inspired) */
+        .sidebar-link.active {
+            background-color: #2563EB; /* Blue-600 */
+            color: white;
+            font-weight: 600;
+            border-radius: 0.5rem; /* Rounded corners */
+        }
+        /* Hover state for sidebar links */
+        .sidebar-link:hover {
+            background-color: #4B5563; /* Gray-700 */
+            color: white;
+        }
+
+        /* Collapsible Sidebar Styles for Desktop */
+        #sidebar {
+            transition: width 0.3s ease-in-out, transform 0.3s ease-in-out;
+            flex-shrink: 0;
+            height: 100%; /* Make sidebar take 100% height of its parent */
+        }
+        #main-content {
+            transition: margin-left 0.3s ease-in-out;
+            overflow-y: auto; /* Allow scrolling for main content */
+            flex-grow: 1; /* Allow main content to take available vertical space */
+        }
+        .sidebar-text {
+            opacity: 1;
+            transition: opacity 0.3s ease-in-out, width 0.3s ease-in-out;
+            white-space: nowrap;
+            overflow: hidden;
+            width: auto;
+        }
+
+        /* Desktop Collapsed state */
+        .sidebar-collapsed #sidebar {
+            width: 5rem; /* w-20 */
+        }
+        .sidebar-collapsed #main-content {
+            margin-left: 5rem; /* ml-20 */
+        }
+        .sidebar-collapsed .sidebar-text {
+            opacity: 0;
+            width: 0;
+            padding-left: 0;
+            padding-right: 0;
+        }
+        .sidebar-collapsed .sidebar-link {
+            justify-content: center;
+            padding-left: 0.5rem;
+            padding-right: 0.5rem;
+        }
+        .sidebar-collapsed .sidebar-link .mr-3 {
+            margin-right: 0;
+        }
+        .sidebar-collapsed .profile-pic-container {
+            justify-content: center;
+        }
+        .sidebar-collapsed .profile-pic-container .mr-3 {
+            margin-right: 0;
+        }
+
+        /* Mobile-specific styles (applied below md breakpoint) */
+        #sidebar {
+            position: fixed;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            transform: translateX(-100%); /* Hidden by default */
+            z-index: 60;
+            width: 16rem;
+            height: 100vh; /* Ensure full height on mobile */
+        }
+
+        #mobile-backdrop {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 40;
+        }
+
+        body.mobile-sidebar-open #sidebar {
+            transform: translateX(0);
+        }
+        body.mobile-sidebar-open #mobile-backdrop {
+            display: block;
+        }
+        body.mobile-sidebar-open #mobile-header {
+            display: none;
+        }
+
+        /* Style for emoji icons to ensure consistent sizing and alignment */
+        .icon-emoji {
+            font-size: 1.5rem;
+            line-height: 1;
+            display: inline-flex; /* Use flex for centering emoji within its own space */
+            align-items: center;
+            justify-content: center;
+            width: 1.5rem; /* Give it a fixed width for consistent alignment */
+            height: 1.5rem; /* Give it a fixed height for consistent alignment */
+        }
+
+        /* Desktop overrides for mobile-specific elements (md breakpoint and above) */
+        @media (min-width: 768px) { /* md breakpoint */
+            #sidebar {
+                position: relative; /* Back to normal flow for desktop */
+                transform: translateX(0); /* Always visible on desktop */
+                width: 16rem; /* Default desktop width */
+            }
+            #main-content {
+                margin-left: 16rem; /* Default desktop margin */
+            }
+            #mobile-backdrop, #mobile-header {
+                display: none !important;
+            }
+            /* Show desktop toggle button */
+            #sidebar .desktop-toggle-container {
+                display: flex !important;
+                align-items: center;
+                justify-content: flex-end; /* Keep to the right when expanded */
+            }
+            /* When collapsed by default on desktop, apply collapsed styles */
+            .sidebar-collapsed #sidebar {
+                width: 5rem;
+            }
+            .sidebar-collapsed #main-content {
+                margin-left: 5rem;
+            }
+            /* New rule for collapsed toggle button container: center it */
+            .sidebar-collapsed .desktop-toggle-container {
+                justify-content: center; /* Center horizontally when collapsed */
+            }
+            /* Ensure the toggle button itself is centered within its container when collapsed */
+            .sidebar-collapsed #sidebar-toggle {
+                display: flex;
+                justify-content: center;
+                align-items: center;
+            }
+        }
+
+        /* Step indicator specific styles from image */
+        .step-indicator-dots {
+            display: flex;
+            justify-content: flex-start; /* Align dots to the left */
+            align-items: center;
+            gap: 0.5rem; /* Space between dots */
+        }
+        .step-dot {
+            width: 0.5rem; /* w-2 */
+            height: 0.5rem; /* h-2 */
+            background-color: #D1D5DB; /* gray-300 */
+            border-radius: 9999px; /* rounded-full */
+            transition: background-color 0.3s ease-in-out, width 0.3s ease-in-out;
+        }
+        .step-dot.active {
+            background-color: #3B82F6; /* blue-500 */
+            width: 1.5rem; /* Longer active dot */
+        }
+
+        /* Device grouping styles (not used in step 3 anymore) */
+        .device-group {
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            border-left-width: 4px; /* For the colored border */
+        }
+        .device-group-header {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .device-address-item {
+            background-color: #F9FAFB; /* gray-50 */
+            border-radius: 0.375rem;
+            padding: 0.5rem 0.75rem;
+            margin-top: 0.5rem;
+            display: flex;
+            flex-direction: column; /* Stack name and address vertically */
+            align-items: flex-start; /* Align text to the left */
+            font-size: 0.875rem;
+            color: #4B5563;
+        }
+        .address-primary-text {
+            font-weight: 500;
+            color: #1F2937;
+        }
+        .address-secondary-text {
+            font-size: 0.75rem; /* text-xs */
+            color: #6B7280; /* gray-500 */
+            margin-top: 0.25rem; /* Space between primary and secondary */
+        }
+        .address-tertiary-text { /* New style for full expression */
+            font-size: 0.7rem; /* even smaller text */
+            color: #6B7280; /* gray-500 */
+            margin-top: 0.25rem;
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace; /* Monospace font */
+            white-space: pre-wrap; /* Preserve whitespace and wrap */
+            word-break: break-all; /* Break long words */
+        }
+        .address-item-controls {
+            margin-top: 0.5rem; /* Space between text and buttons */
+            display: flex;
+            gap: 0.5rem;
+            width: 100%; /* Take full width to align buttons */
+            justify-content: flex-end; /* Push buttons to the right */
+        }
+
+        /* Inline edit input style */
+        .device-name-input {
+            width: auto; /* Adjust width as needed */
+            min-width: 100px;
+            max-width: 80%;
+            padding: 0.25rem 0.5rem;
+            border: 1px solid #D1D5DB;
+            border-radius: 0.25rem;
+            font-weight: 600;
+            font-size: 1rem;
+            color: #1F2937;
+        }
+        .address-name-input {
+            width: 100%; /* Take full width for editing */
+            padding: 0.25rem 0.5rem;
+            border: 1px solid #D1D5DB;
+            border-radius: 0.25rem;
+            font-size: 0.875rem;
+            color: #1F2937;
+            margin-bottom: 0.5rem; /* Space above buttons */
+        }
+
+
+        /* Modal Styles */
+        .modal-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.6);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000; /* High z-index to be on top */
+        }
+        .modal-content {
+            background-color: white;
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+            width: 90%;
+            max-width: 500px;
+            max-height: 90vh; /* Limit height for smaller screens */
+            overflow-y: auto; /* Enable scrolling if content overflows */
+            display: flex;
+            flex-direction: column;
+        }
+        .modal-header {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #1F2937;
+            margin-bottom: 1rem;
+        }
+        .modal-body {
+            margin-bottom: 1.5rem;
+            flex-grow: 1; /* Allow body to take available space */
+        }
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.75rem;
+            border-top: 1px solid #E5E7EB;
+            padding-top: 1rem;
+        }
+
+        /* Custom dropdown styling for emphasis */
+        .custom-select-container {
+            position: relative;
+        }
+
+        .custom-select-display {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            margin-top: 0.25rem;
+            width: 100%;
+            border-radius: 0.375rem;
+            border: 1px solid #D1D5DB;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            font-size: 0.875rem;
+            padding: 0.5rem;
+            background-color: #FFFFFF;
+            transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+        }
+
+        .custom-select-display:hover {
+            border-color: #60A5FA;
+        }
+
+        .custom-select-display.active,
+        .custom-select-display:focus {
+            border-color: #3B82F6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+            outline: none;
+        }
+
+        .custom-select-options {
+            position: absolute;
+            z-index: 10;
+            width: 100%;
+            background-color: white;
+            border: 1px solid #D1D5DB;
+            border-radius: 0.375rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            margin-top: 0.25rem;
+            max-height: 15rem;
+            overflow-y: auto;
+            display: none;
+        }
+        .custom-select-options:not(.hidden) {
+            display: block;
+        }
+
+
+        .custom-select-option {
+            padding: 0.5rem 0.75rem;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.875rem;
+            color: #4B5563;
+        }
+
+        .custom-select-option:hover {
+            background-color: #F3F4F6;
+        }
+
+        .custom-select-option.selected {
+            background-color: #E0F2FE;
+            color: #1D4ED8;
+            font-weight: 500;
+        }
+
+        .custom-select-option.new-device-option-custom {
+            background-color: #EFF6FF;
+            color: #2563EB;
+            font-weight: 600;
+            border-top: 1px solid #DBEAFE;
+        }
+        .custom-select-option.new-device-option-custom:hover {
+            background-color: #DBEAFE;
+        }
+
+        /* Tag blob styling */
+        .tag-blob {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.5rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            margin-left: 0.75rem;
+            line-height: 1;
+        }
+        .tag-expression {
+            background-color: #E5E7EB;
+            color: #4B5563;
+        }
+        .tag-modbus {
+            background-color: #D1FAE5;
+            color: #065F46;
+        }
+        .tag-function {
+            background-color: #FEE2E2;
+            color: #991B1B;
+        }
+        .tag-suggested-name {
+            background-color: #FFEDD5;
+            color: #9A3412;
+        }
+
+        /* New styles for Step 3 device list */
+        .device-list-item {
+            background-color: white;
+            border-radius: 0.375rem; /* Slightly less rounded */
+            border: 1px solid #E5E7EB; /* Thin light gray border */
+            padding: 0.75rem 1rem; /* Reduced vertical padding */
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            transition: background-color 0.1s ease-in-out, border-color 0.1s ease-in-out;
+        }
+        .device-list-item:hover {
+            background-color: #F9FAFB; /* Subtle hover background */
+            border-color: #D1D5DB; /* Slightly darker border on hover */
+            transform: none; /* Remove transform for a flatter look */
+        }
+        .device-list-item.selected {
+            background-color: #E0F2FE; /* blue-100 */
+            border-color: #3B82F6; /* blue-500 */
+            /* No shadow on selected either, for consistency */
+        }
+        /* Style for categorized device items to show their category color */
+        /* Removed direct color application from individual device items */
+        .device-list-item .device-info {
+            flex-grow: 1;
+        }
+        .device-list-item .device-name {
+            font-weight: 600;
+            color: #1F2937; /* Default for uncategorized */
+        }
+        .device-list-item .device-id {
+            font-size: 0.875rem;
+            color: #6B7280; /* Default for uncategorized */
+        }
+        /* Removed device-category from list item as per request */
+
+        /* Sticky header for batch controls */
+        .sticky-right-column {
+            position: sticky;
+            top: 1.5rem; /* Equivalent to md:top-6 */
+            align-self: flex-start; /* Equivalent to md:self-start */
+            z-index: 50; /* Ensure it stays above scrolling content */
+        }
+
+        /* Styles for the grouped categorized devices section */
+        .category-group-container {
+            background-color: white; /* Default white background for the main container */
+            border-radius: 0.5rem;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+            padding: 1.5rem;
+            margin-top: 2rem; /* Space from the two-column layout above */
+        }
+
+        .category-group-header {
+            font-size: 1.25rem; /* text-xl */
+            font-weight: 600; /* font-semibold */
+            color: #1F2937; /* gray-800 */
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid #E5E7EB; /* gray-200 */
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .category-group-header .color-dot {
+            width: 0.75rem; /* w-3 */
+            height: 0.75rem; /* h-3 */
+            border-radius: 9999px; /* rounded-full */
+        }
+
+        /* New style for the inner container of devices within a category group */
+        .devices-in-category-container {
+            border-radius: 0.375rem; /* Match device item border-radius */
+            padding: 1rem; /* Padding inside the colored box */
+            margin-top: 1rem; /* Space from the header */
+            border-left: 4px solid; /* For the colored border */
+        }
+    </style>
+</head>
+<body class="bg-gray-100 h-full flex flex-col">
+    <!-- Hidden div to ensure Tailwind JIT includes dynamic color classes -->
+    <div class="hidden
+        bg-blue-50 border-blue-400 text-blue-800
+        bg-green-50 border-green-400 text-green-800
+        bg-purple-50 border-purple-400 text-purple-800
+        bg-orange-50 border-orange-400 text-orange-800
+        bg-red-50 border-red-400 text-red-800
+        bg-teal-50 border-teal-400 text-teal-800
+        bg-indigo-50 border-indigo-400 text-indigo-800
+        bg-pink-50 border-pink-400 text-pink-800
+        bg-yellow-50 border-yellow-400 text-yellow-800
+        bg-gray-50 border-gray-400 text-gray-800
+    "></div>
+
+    <!-- Mobile Header (Visible only on small screens) -->
+    <header id="mobile-header" class="bg-white shadow-md p-4 flex items-center justify-between md:hidden">
+        <h1 class="text-xl font-bold text-gray-800">Dashboard</h1>
+        <button id="mobile-hamburger" class="p-2 rounded-full hover:bg-gray-200 text-gray-800 focus:outline-none">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+        </button>
+    </header>
+
+    <!-- Main Content Area with Sidebar -->
+    <div id="dashboard-container" class="flex flex-grow sidebar-collapsed h-full">
+        <!-- Sidebar Menu (Cloudflare inspired) -->
+        <aside id="sidebar" class="bg-gray-900 text-gray-300 p-4 flex flex-col rounded-tr-lg rounded-br-lg shadow-lg">
+            <!-- Toggle Button (Desktop only, hidden on mobile by default) -->
+            <div class="flex justify-end mb-4 desktop-toggle-container hidden">
+                <button id="sidebar-toggle" class="p-2 rounded-full hover:bg-gray-700 text-white focus:outline-none">
+                    <span class="icon-emoji">▶️</span>
+                </button>
+            </div>
+
+            <nav class="flex-grow">
+                <ul>
+                    <li class="mb-2">
+                        <a href="#" data-page="categorize-devices" class="sidebar-link flex items-center py-2 px-4 rounded-lg transition duration-200 ease-in-out active">
+                            <span class="mr-3 icon-emoji">🗂️</span>
+                            <span class="sidebar-text">Categorize Devices</span>
+                        </a>
+                    </li>
+                    <li class="mb-2">
+                        <a href="/modbus-graph.html" class="sidebar-link flex items-center py-2 px-4 rounded-lg transition duration-200 ease-in-out">
+                            <span class="mr-3 icon-emoji">📈</span>
+                            <span class="sidebar-text">MODBUS Graph</span>
+                        </a>
+                    </li>
+                    <li class="mb-2">
+                        <a href="/settings.html" class="sidebar-link flex items-center py-2 px-4 rounded-lg transition duration-200 ease-in-out">
+                            <span class="mr-3 icon-emoji">🔧</span>
+                            <span class="sidebar-text">Settings</span>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+            <!-- Optional: Add a user/account section at the bottom of the sidebar -->
+            <div class="mt-auto pt-4 border-t border-gray-700">
+                <div class="flex items-center p-2 rounded-lg hover:bg-gray-700 cursor-pointer transition duration-200 ease-in-out profile-pic-container">
+                    <div class="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold text-sm mr-3">
+                        JD
+                    </div>
+                    <div class="sidebar-text">
+                        <p class="text-sm font-semibold text-white">John Doe</p>
+                        <p class="text-xs text-gray-400">Admin</p>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Mobile Backdrop (Visible only when mobile sidebar is open) -->
+        <div id="mobile-backdrop" class="hidden"></div>
+
+        <!-- Content Area -->
+        <main id="main-content" class="flex-grow p-6">
+            <div class="container mx-auto px-4 py-8">
+                <!-- Categorize Devices Section (Step 3) -->
+                <section id="categorize-devices-section" class="dashboard-section">
+                    <h2 class="text-3xl font-semibold text-gray-700 mb-6">Categorize Devices</h2>
+                    <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+                        <!-- Step Indicator (Dots) -->
+                        <div class="step-indicator-dots flex justify-start items-center space-x-2 mb-8">
+                            <div class="step-dot" data-step="1"></div>
+                            <div class="step-dot" data-step="2"></div>
+                            <div class="step-dot active" data-step="3"></div>
+                        </div>
+
+                        <p class="text-gray-600 mb-6">Assign categories to your devices for better organization and reporting.</p>
+
+                        <div class="flex flex-col md:flex-row md:space-x-6">
+                            <!-- Left Column: Uncategorized Device List -->
+                            <div class="w-full md:w-2/3">
+                                <h4 class="text-lg font-semibold text-gray-700 mb-4">Devices to be Categorized</h4>
+                                <div id="uncategorized-devices-list" class="flex flex-wrap -mx-2 min-h-[150px] bg-gray-50 p-4 rounded-lg border border-gray-200">
+                                    <!-- Uncategorized device list items will be rendered here -->
+                                    <p class="text-gray-500 text-sm text-center py-4 w-full" id="no-uncategorized-message">All devices have been categorized!</p>
+                                </div>
+                            </div>
+
+                            <!-- Right Column: Batch Categorization Controls (Sticky) -->
+                            <div class="w-full md:w-1/3 sticky-right-column">
+                                <div class="bg-gray-50 p-4 rounded-lg border border-gray-200 mb-6">
+                                    <h4 class="text-lg font-semibold text-gray-700 mb-4">Batch Assign Category</h4>
+                                    <div class="flex flex-col gap-4">
+                                        <label class="flex items-center cursor-pointer">
+                                            <input type="checkbox" id="select-all-devices-checkbox" class="form-checkbox h-5 w-5 text-blue-600 rounded">
+                                            <span class="ml-2 text-gray-700 text-sm font-medium">Select All Uncategorized Devices</span>
+                                        </label>
+                                        <div class="custom-select-container flex-grow w-full">
+                                            <div id="batch-category-select-display" class="custom-select-display">
+                                                <span>-- Select Category for Batch --</span>
+                                                <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                                            </div>
+                                            <input type="hidden" id="hidden-batch-category-select-value" value="">
+                                            <div id="batch-category-select-options" class="custom-select-options hidden">
+                                                <div class="custom-select-option new-device-option-custom" data-value="new-category">Add New Category</div>
+                                                <!-- Categories will be dynamically loaded here -->
+                                            </div>
+                                        </div>
+                                        <button id="apply-batch-category-button" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition duration-300 ease-in-out shadow-md">
+                                            Apply to Selected
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- One Column: Grouped Categorized Devices -->
+                        <div class="category-group-container mt-8">
+                            <h3 class="text-xl font-semibold text-gray-800 mb-4">Categorized Devices</h3>
+                            <div id="categorized-devices-grouped-list">
+                                <!-- Categorized devices grouped by category will be rendered here -->
+                                <p class="text-gray-500 text-sm text-center py-4 w-full" id="no-categorized-message">No devices categorized yet.</p>
+                            </div>
+                        </div>
+
+
+                        <div class="flex justify-end items-center mt-8 pt-4 border-t border-gray-200">
+                            <button id="step3-finish-button" class="px-6 py-3 bg-blue-500 text-white font-semibold rounded-full hover:bg-blue-600 transition duration-300 ease-in-out shadow-md">
+                                Finish Setup
+                            </button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- MODBUS Graph Section (Now hidden by default and managed externally) -->
+                <section id="modbus-graph-section" class="dashboard-section hidden">
+                    <!-- This section is hidden and would typically be loaded via a separate Flask route -->
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- New Category Modal -->
+    <div id="new-category-modal-backdrop" class="modal-backdrop hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                Add New Category
+            </div>
+            <div class="modal-body">
+                <div class="mb-4">
+                    <label for="modal-category-name" class="block text-sm font-medium text-gray-700">Category Name:</label>
+                    <input type="text" id="modal-category-name" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2" placeholder="e.g., HVAC, Safety, Production">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="modal-cancel-category-button" class="px-4 py-2 text-gray-700 font-semibold rounded-full hover:bg-gray-100 transition duration-200 ease-in-out">
+                    Cancel
+                </button>
+                <button id="modal-add-category-button" class="px-4 py-2 bg-blue-500 text-white font-semibold rounded-full hover:bg-blue-600 transition duration-200 ease-in-out shadow-md">
+                    Add Category
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global data arrays
+        let mockAddresses = []; // Still needed for data structure consistency, even if not rendered
+        let devices = [];
+        // Define a set of Tailwind color classes for random assignment
+        const tailwindColors = [
+            'blue', 'green', 'purple', 'orange', 'red', 'teal', 'indigo', 'pink', 'yellow'
+        ];
+        let categories = []; // Will be dynamically populated
+        let selectedDeviceIds = new Set(); // To track selected devices for batch operations
+
+        // New devices structure from user
+        const userProvidedDevices = {{userProvidedDevices| tojson }};;
+
+
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('DOM Content Loaded');
+
+            const body = document.body;
+            const dashboardContainer = document.getElementById('dashboard-container');
+            const sidebarToggle = document.getElementById('sidebar-toggle'); // Desktop toggle
+            const mobileHamburger = document.getElementById('mobile-hamburger'); // Mobile toggle
+            const mobileBackdrop = document.getElementById('mobile-backdrop');
+            const sidebarLinks = document.querySelectorAll('.sidebar-link');
+            const dashboardSections = document.querySelectorAll('.dashboard-section');
+            const stepDots = document.querySelectorAll('.step-dot');
+
+            // Step 3 Elements
+            const categorizeDevicesSection = document.getElementById('categorize-devices-section');
+            const uncategorizedDevicesList = document.getElementById('uncategorized-devices-list');
+            const categorizedDevicesGroupedList = document.getElementById('categorized-devices-grouped-list');
+            const noUncategorizedMessage = document.getElementById('no-uncategorized-message');
+            const noCategorizedMessage = document.getElementById('no-categorized-message');
+            const step3FinishButton = document.getElementById('step3-finish-button');
+
+            // Batch Categorization Controls
+            const selectAllDevicesCheckbox = document.getElementById('select-all-devices-checkbox');
+            const batchCategorySelectDisplay = document.getElementById('batch-category-select-display');
+            const hiddenBatchCategorySelectValue = document.getElementById('hidden-batch-category-select-value');
+            const batchCategorySelectOptions = document.getElementById('batch-category-select-options');
+            const applyBatchCategoryButton = document.getElementById('apply-batch-category-button');
+
+
+            // Modals
+            const newCategoryModalBackdrop = document.getElementById('new-category-modal-backdrop');
+            const modalCategoryNameInput = document.getElementById('modal-category-name');
+            const modalCancelCategoryButton = document.getElementById('modal-cancel-category-button');
+            const modalAddCategoryButton = document.getElementById('modal-add-category-button');
+
+
+            // Helper function to generate random strings (for IDs)
+            function generateRandomString(length) {
+                const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0987654321';
+                let result = '';
+                for (let i = 0; i < length; i++) {
+                    result += characters.charAt(Math.floor(Math.random() * characters.length));
+                }
+                return result;
+            }
+
+            // Function to get a random Tailwind color that is not already used by existing categories
+            function getRandomColor() {
+                const usedColors = new Set(categories.map(cat => cat.color));
+                const availableColors = tailwindColors.filter(color => !usedColors.has(color));
+                
+                if (availableColors.length > 0) {
+                    return availableColors[Math.floor(Math.random() * availableColors.length)];
+                } else {
+                    // If all predefined colors are used, cycle through them
+                    // This ensures a color is always returned even if all primary colors are exhausted
+                    return tailwindColors[Math.floor(Math.random() * tailwindColors.length)];
+                }
+            }
+
+
+            // API function to prefill groups
+            function setupInitialData() {
+                devices = userProvidedDevices.map(device => ({
+                    id: device.id,
+                    name: device.name,
+                    description: device.description,
+                    // All devices start as uncategorized for this demonstration
+                    category: null
+                }));
+
+                // Categories will start empty, user will add them
+                categories = [];
+            }
+
+
+            // --- Helper Functions for Modals ---
+            function openNewCategoryModal() {
+                console.log('Opening new category modal.');
+                newCategoryModalBackdrop.classList.remove('hidden');
+                body.classList.add('overflow-hidden');
+                modalCategoryNameInput.value = ''; // Clear previous input
+                modalCategoryNameInput.focus();
+            }
+
+            function closeNewCategoryModal() {
+                console.log('Closing new category modal.');
+                newCategoryModalBackdrop.classList.add('hidden');
+                body.classList.remove('overflow-hidden');
+            }
+
+
+            // --- UI Management Functions ---
+
+            // Function to update step indicator dots
+            function updateStepIndicator(currentStep) {
+                stepDots.forEach(dot => {
+                    const step = parseInt(dot.dataset.step);
+                    if (step === currentStep) {
+                        dot.classList.add('active');
+                    } else {
+                        dot.classList.remove('active');
+                    }
+                });
+            }
+
+            // Function to show a specific section and set active sidebar link
+            function showSection(sectionId) {
+                console.log(`Attempting to show section: ${sectionId}`);
+                dashboardSections.forEach(section => {
+                    section.classList.add('hidden'); // Hide all sections
+                });
+
+                const targetSection = document.getElementById(sectionId);
+                if (targetSection) {
+                    targetSection.classList.remove('hidden'); // Show the target section
+                    console.log(`Section "${sectionId}" shown.`);
+                } else {
+                    console.error(`Error: Section with ID "${sectionId}" not found.`);
+                }
+            }
+
+            // Function to toggle sidebar for desktop (collapse/expand)
+            function toggleDesktopSidebar() {
+                dashboardContainer.classList.toggle('sidebar-collapsed');
+                const isCollapsed = dashboardContainer.classList.contains('sidebar-collapsed');
+                sidebarToggle.innerHTML = isCollapsed
+                    ? '<span class="icon-emoji">▶️</span>' // Right arrow emoji
+                    : '<span class="icon-emoji">◀️</span>'; // Left arrow emoji
+            }
+
+            // Function to toggle sidebar for mobile (open/close drawer)
+            function toggleMobileSidebar() {
+                body.classList.toggle('mobile-sidebar-open');
+            }
+
+            // --- Step 3 Specific Functions ---
+            function renderCategorizeDevices() {
+                uncategorizedDevicesList.innerHTML = ''; // Clear previous list
+                categorizedDevicesGroupedList.innerHTML = ''; // Clear previous grouped list
+                // selectedDeviceIds.clear(); // REMOVED: Do not clear selections on re-render, preserve them
+                selectAllDevicesCheckbox.checked = false; // Uncheck select all visually
+
+                const uncategorized = devices.filter(device => device.category === null);
+                const categorized = devices.filter(device => device.category !== null);
+
+                // Render Uncategorized Devices
+                if (uncategorized.length === 0) {
+                    noUncategorizedMessage.classList.remove('hidden');
+                    // Clear children, but keep the message
+                    Array.from(uncategorizedDevicesList.children).forEach(child => {
+                        if (child.id !== 'no-uncategorized-message') {
+                            child.remove();
+                        }
+                    });
+                    selectAllDevicesCheckbox.disabled = true;
+                } else {
+                    noUncategorizedMessage.classList.add('hidden');
+                    selectAllDevicesCheckbox.disabled = false;
+                    uncategorized.forEach(device => {
+                        const deviceListItem = document.createElement('div');
+                        deviceListItem.id = `device-card-${device.id}`;
+                        const isSelected = selectedDeviceIds.has(device.id); // Check selectedDeviceIds for initial state
+                        deviceListItem.className = `device-list-item mb-4 mx-2 w-full cursor-pointer ${isSelected ? 'selected' : ''}`;
+                        deviceListItem.dataset.deviceId = device.id; // Store device ID for click handler
+                        
+                        deviceListItem.innerHTML = `
+                            <input type="checkbox" class="device-select-checkbox h-5 w-5 text-blue-600 rounded mr-3" data-device-id="${device.id}" ${isSelected ? 'checked' : ''}>
+                            <div class="flex-grow device-info">
+                                <div class="device-name text-base font-semibold text-gray-800">${device.name}</div>
+                                <div class="device-id text-sm text-gray-600">${device.id}</div>
+                            </div>
+                        `;
+                        uncategorizedDevicesList.appendChild(deviceListItem);
+                    });
+                }
+
+                // Render Categorized Devices Grouped by Category
+                if (categorized.length === 0) {
+                    noCategorizedMessage.classList.remove('hidden');
+                    // Hide any potential lingering device list items if they exist
+                     Array.from(categorizedDevicesGroupedList.children).forEach(child => {
+                        if (child.id !== 'no-categorized-message') {
+                            child.remove();
+                        }
+                    });
+                } else {
+                    noCategorizedMessage.classList.add('hidden');
+                    // Group devices by category
+                    const groupedByCategory = categorized.reduce((acc, device) => {
+                        (acc[device.category] = acc[device.category] || []).push(device);
+                        return acc;
+                    }, {});
+
+                    // Sort categories alphabetically for consistent display
+                    const sortedCategoryNames = Object.keys(groupedByCategory).sort();
+
+                    sortedCategoryNames.forEach(categoryName => {
+                        const categoryInfo = categories.find(cat => cat.name === categoryName);
+                        const categoryColor = categoryInfo ? categoryInfo.color : 'gray'; // Fallback to gray
+
+                        const categoryGroupDiv = document.createElement('div');
+                        categoryGroupDiv.className = 'mb-6';
+                        categoryGroupDiv.innerHTML = `
+                            <div class="category-group-header">
+                                <span class="color-dot bg-${categoryColor}-500"></span>
+                                ${categoryName}
+                            </div>
+                            <div class="devices-in-category-container flex flex-wrap -mx-2 bg-${categoryColor}-50 border-${categoryColor}-400"></div>
+                        `;
+                        const devicesInGroupContainer = categoryGroupDiv.querySelector('.devices-in-category-container');
+
+                        groupedByCategory[categoryName].forEach(device => {
+                            const deviceListItem = document.createElement('div');
+                            deviceListItem.id = `device-card-${device.id}`;
+                            const isSelected = selectedDeviceIds.has(device.id); // Check selected state
+                            deviceListItem.className = `device-list-item mb-4 mx-2 w-full md:w-[calc(50%-1rem)] cursor-pointer ${isSelected ? 'selected' : ''}`;
+                            deviceListItem.dataset.deviceId = device.id; // Store device ID for click handler
+                            
+                            deviceListItem.innerHTML = `
+                                <input type="checkbox" class="device-select-checkbox h-5 w-5 text-blue-600 rounded mr-3" data-device-id="${device.id}" ${isSelected ? 'checked' : ''}>
+                                <div class="flex-grow device-info">
+                                    <div class="device-name text-base font-semibold text-gray-800">${device.name}</div>
+                                    <div class="device-id text-sm text-gray-600">${device.id}</div>
+                                </div>
+                            `;
+                            devicesInGroupContainer.appendChild(deviceListItem);
+                        });
+                        categorizedDevicesGroupedList.appendChild(categoryGroupDiv);
+                    });
+                }
+
+                // Update the "Apply to Selected" button's disabled state based on current selections
+                applyBatchCategoryButton.disabled = selectedDeviceIds.size === 0;
+
+                // Attach a single delegated event listener for all device list items
+                // This listener will be attached to the parent containers
+                uncategorizedDevicesList.removeEventListener('click', handleDeviceItemClickDelegated);
+                uncategorizedDevicesList.addEventListener('click', handleDeviceItemClickDelegated);
+
+                categorizedDevicesGroupedList.removeEventListener('click', handleDeviceItemClickDelegated);
+                categorizedDevicesGroupedList.addEventListener('click', handleDeviceItemClickDelegated);
+            }
+
+            // Centralized function to update a device's selection state and UI
+            function updateDeviceSelectionState(checkbox) {
+                const deviceId = checkbox.dataset.deviceId;
+                const deviceListItem = checkbox.closest('.device-list-item');
+
+                if (checkbox.checked) {
+                    selectedDeviceIds.add(deviceId);
+                    deviceListItem.classList.add('selected');
+                } else {
+                    selectedDeviceIds.delete(deviceId);
+                    deviceListItem.classList.remove('selected');
+                }
+
+                // Update "Select All" checkbox state (only for uncategorized devices)
+                const uncategorizedCheckboxes = uncategorizedDevicesList.querySelectorAll('.device-select-checkbox');
+                const allUncategorizedCheckboxesArray = Array.from(uncategorizedCheckboxes);
+                // Ensure "Select All" is only checked if there are uncategorized devices AND all are selected
+                const allUncategorizedChecked = allUncategorizedCheckboxesArray.length > 0 && allUncategorizedCheckboxesArray.every(cb => cb.checked);
+                selectAllDevicesCheckbox.checked = allUncategorizedChecked;
+
+                // Update the "Apply to Selected" button's disabled state
+                applyBatchCategoryButton.disabled = selectedDeviceIds.size === 0;
+            }
+
+            function handleDeviceItemClickDelegated(event) {
+                // Find the closest .device-list-item parent
+                const deviceListItem = event.target.closest('.device-list-item');
+                if (!deviceListItem) {
+                    return; // Click was not on a device list item
+                }
+
+                const checkbox = deviceListItem.querySelector('.device-select-checkbox');
+                if (checkbox) {
+                    // Toggle checkbox state if the click wasn't directly on the checkbox
+                    // This ensures clicking the entire row toggles the checkbox
+                    if (event.target !== checkbox) {
+                        checkbox.checked = !checkbox.checked;
+                    }
+                    // Now, regardless of how the checkbox state changed, update the selectedDeviceIds and UI.
+                    updateDeviceSelectionState(checkbox);
+                }
+            }
+
+
+            function toggleSelectAllCheckboxes(event) {
+                const isChecked = event.target.checked;
+                // selectedDeviceIds.clear(); // Removed: Let updateDeviceSelectionState handle additions/removals
+
+                // Select/deselect checkboxes in the "To be Categorized" list
+                document.querySelectorAll('#uncategorized-devices-list .device-select-checkbox').forEach(checkbox => {
+                    checkbox.checked = isChecked;
+                    updateDeviceSelectionState(checkbox); // Use the helper to update state and class
+                });
+
+                // Deselect all checkboxes in the "Categorized Devices" list if "Select All" is unchecked
+                // This ensures consistency when "Select All" is used to clear selections.
+                if (!isChecked) {
+                    document.querySelectorAll('#categorized-devices-grouped-list .device-select-checkbox').forEach(checkbox => {
+                        checkbox.checked = false;
+                        updateDeviceSelectionState(checkbox); // Use the helper
+                    });
+                }
+            }
+
+            function applyCategoryToSelectedDevices() {
+                const batchSelectedCategoryName = hiddenBatchCategorySelectValue.value;
+
+                if (selectedDeviceIds.size === 0) {
+                    alert('Please select at least one device to categorize.');
+                    return;
+                }
+                if (!batchSelectedCategoryName) {
+                    alert('Please select a category from the batch dropdown.');
+                    return;
+                }
+
+                // Iterate through a copy of selectedDeviceIds to avoid issues if the Set changes during iteration
+                const idsToUpdate = new Set(selectedDeviceIds);
+                idsToUpdate.forEach(deviceId => {
+                    const device = devices.find(d => d.id === deviceId);
+                    if (device) {
+                        device.category = batchSelectedCategoryName;
+                    }
+                });
+
+                // Clear selectedDeviceIds after applying category
+                selectedDeviceIds.clear();
+
+                console.log('Batch category applied. Current devices state:', devices);
+                renderCategorizeDevices(); // Re-render to show updated categories and clear selections
+                // Reset batch dropdown
+                batchCategorySelectDisplay.querySelector('span').textContent = '-- Select Category for Batch --';
+                hiddenBatchCategorySelectValue.value = '';
+            }
+
+
+            // --- Event Listeners ---
+
+            // Sidebar links
+            sidebarLinks.forEach(link => {
+                link.addEventListener('click', (event) => {
+                    sidebarLinks.forEach(l => l.classList.remove('active'));
+                    event.currentTarget.classList.add('active');
+
+                    const pageId = event.currentTarget.dataset.page;
+                    if (pageId) {
+                        event.preventDefault();
+                        showSection(`${pageId}-section`);
+                        if (body.classList.contains('mobile-sidebar-open')) {
+                            toggleMobileSidebar();
+                        }
+                        // Update step indicator based on the section shown
+                        if (pageId === 'categorize-devices') {
+                            updateStepIndicator(3);
+                            renderCategorizeDevices(); // Render categorization on entering step 3
+                        }
+                    }
+                });
+            });
+
+            // Desktop sidebar toggle
+            if (sidebarToggle) {
+                sidebarToggle.addEventListener('click', toggleDesktopSidebar);
+            }
+            // Mobile hamburger and backdrop
+            if (mobileHamburger) {
+                mobileHamburger.addEventListener('click', toggleMobileSidebar);
+            }
+            if (mobileBackdrop) {
+                mobileBackdrop.addEventListener('click', toggleMobileSidebar);
+            }
+
+            // Step 3 "Finish Setup" button click (placeholder)
+            step3FinishButton.addEventListener('click', () => {
+                alert('Setup Finished! (This would proceed to the final dashboard or report generation)');
+                console.log('Final devices state with categories:', devices);
+                // In a real app, you would send 'devices' and 'mockAddresses' data to Flask
+            });
+
+
+            // Close custom dropdowns when clicking outside
+            document.addEventListener('click', (event) => {
+                // Close the batch category dropdown if open
+                if (batchCategorySelectOptions && !batchCategorySelectOptions.closest('.custom-select-container').contains(event.target)) {
+                    batchCategorySelectOptions.classList.add('hidden');
+                    batchCategorySelectDisplay.classList.remove('active');
+                }
+            });
+
+
+            // Modal Buttons for New Category
+            modalCancelCategoryButton.addEventListener('click', closeNewCategoryModal);
+            modalAddCategoryButton.addEventListener('click', () => {
+                const newCategoryName = modalCategoryNameInput.value.trim();
+                if (!newCategoryName) {
+                    alert('Please enter a category name.');
+                    return;
+                }
+                // Check if category name already exists (case-insensitive)
+                if (categories.some(cat => cat.name.toLowerCase() === newCategoryName.toLowerCase())) {
+                    alert(`Category "${newCategoryName}" already exists.`);
+                    return;
+                }
+
+                const newColor = getRandomColor();
+                categories.push({ name: newCategoryName, color: newColor });
+                console.log('New category added:', { name: newCategoryName, color: newColor });
+                
+                closeNewCategoryModal();
+                renderCategorizeDevices(); // Re-render categorization section to show updated category and new option
+                renderBatchCategorySelectOptions(); // Re-render batch category dropdown to include new category
+
+                // Automatically select the newly added category in the batch dropdown
+                batchCategorySelectDisplay.querySelector('span').textContent = newCategoryName;
+                hiddenBatchCategorySelectValue.value = newCategoryName;
+            });
+
+            // Batch Category Dropdown Event Listeners
+            batchCategorySelectDisplay.addEventListener('click', (event) => {
+                // Close other open dropdowns first (though there should only be one now)
+                document.querySelectorAll('.custom-select-options:not(.hidden)').forEach(openOptions => {
+                    if (openOptions !== batchCategorySelectOptions) {
+                        openOptions.classList.add('hidden');
+                        openOptions.previousElementSibling.classList.remove('active');
+                    }
+                });
+
+                batchCategorySelectOptions.classList.toggle('hidden');
+                batchCategorySelectDisplay.classList.toggle('active');
+                event.stopPropagation(); // Prevent document click from immediately closing
+            });
+
+            function renderBatchCategorySelectOptions() {
+                batchCategorySelectOptions.innerHTML = ''; // Clear previous options
+                const newCategoryOption = document.createElement('div');
+                newCategoryOption.className = 'custom-select-option new-device-option-custom';
+                newCategoryOption.dataset.value = 'new-category';
+                newCategoryOption.textContent = 'Add New Category';
+                batchCategorySelectOptions.appendChild(newCategoryOption);
+
+                categories.forEach(cat => {
+                    const optionDiv = document.createElement('div');
+                    optionDiv.className = 'custom-select-option';
+                    optionDiv.dataset.value = cat.name; // Use category name as value
+                    optionDiv.innerHTML = `<span>${cat.name}</span><span class="color-dot bg-${cat.color}-500 w-3 h-3 rounded-full"></span>`;
+                    batchCategorySelectOptions.appendChild(optionDiv);
+                });
+
+                // Re-attach listeners for batch category options
+                batchCategorySelectOptions.querySelectorAll('.custom-select-option').forEach(option => {
+                    option.addEventListener('click', (event) => {
+                        const selectedValue = event.currentTarget.dataset.value;
+                        let selectedText = event.currentTarget.querySelector('span:first-child') ? event.currentTarget.querySelector('span:first-child').textContent : event.currentTarget.textContent; // Get text from span or direct text
+
+                        if (selectedValue === 'new-category') {
+                            openNewCategoryModal(); // No specific device card for batch new category
+                            // Reset display for batch dropdown after opening modal
+                            batchCategorySelectDisplay.querySelector('span').textContent = '-- Select Category for Batch --';
+                            hiddenBatchCategorySelectValue.value = '';
+                        } else {
+                            batchCategorySelectDisplay.querySelector('span').textContent = selectedText;
+                            hiddenBatchCategorySelectValue.value = selectedValue;
+                        }
+                        batchCategorySelectOptions.classList.add('hidden');
+                        batchCategorySelectDisplay.classList.remove('active');
+                        event.stopPropagation();
+                    });
+                });
+            }
+
+            // Event listener for "Select All" checkbox
+            selectAllDevicesCheckbox.addEventListener('change', toggleSelectAllCheckboxes);
+
+            // Event listener for "Apply to Selected" button
+            applyBatchCategoryButton.addEventListener('click', applyCategoryToSelectedDevices);
+
+
+            // Initial setup on load
+            setupInitialData(); // Call the API to prefill data
+            showSection('categorize-devices-section'); // Start directly on step 3
+            updateStepIndicator(3); // Set step indicator to 3
+            const categorizeLink = document.querySelector('[data-page="categorize-devices"]'); // Link for this page
+            if (categorizeLink) {
+                categorizeLink.classList.add('active');
+            }
+            renderCategorizeDevices(); // Render initial state of categorized devices
+            renderBatchCategorySelectOptions(); // Render batch category dropdown options initially
+        });
+    </script>
+</body>
+</html>
